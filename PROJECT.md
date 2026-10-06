@@ -17,8 +17,10 @@ Supabase project `intouch-dev` (`qsecrqhxqfesdvintdmy`, us-east-1) is provisione
 
 ## Next milestones
 
+CRM workflows are implemented: contact tags, assignees, notes and activity history; owner/member/viewer team access with expiring invitation links; assigned follow-ups and date filters; validated CSV preview/import; editable pipeline stages. The additive workflow migration is applied to the development database. See README for limits and local invitation sharing behavior.
+
 1. Complete email delivery configuration and verify real signup/confirmation and password recovery delivery before opening registration to other businesses.
-2. Add invitations and membership management, pagination, and account lifecycle flows.
+2. Add pagination and account lifecycle flows. Invitations and owner/member/viewer management are implemented.
 3. Implement and validate Meta authorization per business, token encryption, account selection, disconnection, webhook verification/routing/idempotency, and outbound delivery/status handling.
 4. Validate provider eligibility and permissions using approved test accounts; complete required review before third-party businesses onboard.
 5. Deploy only after the above gates pass and operational settings are configured.

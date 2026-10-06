@@ -1,12 +1,14 @@
-export type Contact = {id: string; name: string; email: string; phone: string; company: string; status: 'Lead'|'Customer'|'Inactive'};
+export type Contact = {id: string; name: string; email: string; phone: string; company: string; tags: string[]; website: string; assigned_to: string|null; status: 'Lead'|'Customer'|'Inactive'};
 export type Deal = {id: string; title: string; contact_id: string|null; value_cents: number; stage: string};
-export type Task = {id: string; title: string; contact_id: string|null; due_date: string; done: boolean};
+export type Task = {id: string; title: string; contact_id: string|null; assigned_to: string|null; due_date: string; done: boolean};
 export type Channel = 'WhatsApp'|'Facebook'|'Instagram';
 export type Conversation = {id: string; contact_id: string; connection_id: string; status: string};
 export type Message = {id: string; conversation_id: string; body: string; direction: string; created_at: string};
 export type Connection = {id: string; channel: Channel; display_name: string; status: string};
-export type State = {contacts: Contact[]; deals: Deal[]; tasks: Task[]; conversations: Conversation[]; messages: Message[]; channel_connections: Connection[]};
-export const emptyState: State = {contacts: [], deals: [], tasks: [], conversations: [], messages: [], channel_connections: []};
+export type Member = {user_id:string;email:string;role:'owner'|'member'|'viewer'};
+export type Stage = {name:string;position:number;kind:'open'|'won'|'lost'};
+export type State = {members:Member[];pipeline_stages:Stage[];contacts: Contact[]; deals: Deal[]; tasks: Task[]; conversations: Conversation[]; messages: Message[]; channel_connections: Connection[]};
+export const emptyState: State = {members:[],pipeline_stages:[],contacts: [], deals: [], tasks: [], conversations: [], messages: [], channel_connections: []};
 export const channels: Channel[] = ['WhatsApp','Facebook','Instagram'];
 export const stages = ['New','Qualified','Proposal','Won','Lost'];
 export const money = (cents: number) => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(cents/100);
