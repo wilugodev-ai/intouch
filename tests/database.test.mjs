@@ -1,0 +1,44 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { PGlite } from '@electric-sql/pglite';
+test('database isolates businesses and enforces workspace relationships', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`create role anon; create role authenticated; create schema auth;
+      create table auth.users (id uuid primary key);
+      create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+      grant usage on schema auth to authenticated; grant execute on function auth.uid() to authenticated;`);
+    await db.exec(await readFile(new URL('../supabase/migrations/202610060001_foundation.sql',import.meta.url),'utf8'));
+    const a='11111111-1111-4111-8111-111111111111', b='22222222-2222-4222-8222-222222222222';
+    await db.query('insert into auth.users(id) values ($1),($2)',[a,b]);
+    const asUser = async (id) => { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]); await db.exec('set role authenticated'); };
+    await asUser(a);
+    const wa=(await db.query("select public.create_workspace('Business A') as id")).rows[0].id;
+    const ca=(await db.query("insert into public.contacts(workspace_id,name) values ($1,'Alice customer') returning id",[wa])).rows[0].id;
+    await db.query("insert into public.deals(workspace_id,contact_id,title,value_cents) values ($1,$2,'A deal',1000)",[wa,ca]);
+    await asUser(b);
+    const wb=(await db.query("select public.create_workspace('Business B') as id")).rows[0].id;
+    const cb=(await db.query("insert into public.contacts(workspace_id,name) values ($1,'Bob customer') returning id",[wb])).rows[0].id;
+    assert.equal((await db.query('select * from public.workspaces')).rows.length,1);
+    assert.equal((await db.query('select * from public.contacts')).rows[0].id,cb);
+    assert.equal((await db.query('select * from public.deals')).rows.length,0);
+    assert.equal((await db.query('select * from public.workspace_members')).rows.length,1);
+    await assert.rejects(db.query("insert into public.contacts(workspace_id,name) values($1,'Intruder')",[wa]),/row-level security/i);
+    assert.equal((await db.query("update public.contacts set name='Intruder' where id=$1 returning id",[ca])).rows.length,0);
+    assert.equal((await db.query('delete from public.contacts where id=$1 returning id',[ca])).rows.length,0);
+    await assert.rejects(db.query("insert into public.deals(workspace_id,contact_id,title) values($1,$2,'Bad link')",[wb,ca]),/foreign key/i);
+    await assert.rejects(db.query("insert into public.tasks(workspace_id,contact_id,title) values($1,$2,'Bad task')",[wb,ca]),/foreign key/i);
+    await assert.rejects(db.query("insert into public.workspace_members(workspace_id,user_id,role) values($1,$2,'owner')",[wa,b]),/permission denied/i);
+    await assert.rejects(db.query("insert into public.channel_connections(workspace_id,channel,external_account_id,display_name,status) values($1,'WhatsApp','fake','fake','connected')",[wb]),/permission denied/i);
+    await db.exec('reset role');
+    await db.query("insert into public.workspace_members(workspace_id,user_id,role) values($1,$2,'member')",[wa,b]);
+    await asUser(b);
+    assert.equal((await db.query('select * from public.contacts')).rows.length,2);
+    await db.query("update public.contacts set name='Shared teammate edit' where id=$1",[ca]);
+    await assert.rejects(db.query('update public.contacts set workspace_id=$1 where id=$2',[wb,ca]),/Workspace cannot be changed/);
+    await db.exec('reset role; set role anon');
+    await assert.rejects(db.query('select * from public.contacts'),/permission denied/);
+    await assert.rejects(db.query("select public.create_workspace('Anonymous')"),/permission denied/);
+  } finally {await db.close();}
+});
