@@ -1,4 +1,4 @@
-# Initial local verification
+# Supabase-backed CRM verification
 
 Verified on Windows with Node 24.19.0 and pnpm 12.5.1, October 6, 2026.
 
@@ -6,6 +6,8 @@ Verified on Windows with Node 24.19.0 and pnpm 12.5.1, October 6, 2026.
 - ESLint passed for both applications.
 - Production builds passed for Next.js and NestJS.
 - PostgreSQL/PGlite isolation test passed against the actual SQL migration: independent workspace visibility, denied cross-business insert/update/delete, rejected foreign contact links, denied membership escalation and fabricated channel connections, valid shared-member access, immutable workspace assignment, and anonymous access denial.
-- Five Playwright tests passed: contact creation/edit/search/delete and reload persistence; deal-stage and task completion persistence; local-only demo reply and honest channel setup; mobile viewport layout; API authentication rejection.
+- Four Playwright tests passed against the configured Supabase development project: real contact creation/edit/deletion; deal and task writes; contact/task persistence across separate browser sessions; denied cross-user reads and writes; sign-out; confirmation and recovery links with a successful password change; mobile sign-in; unauthenticated API rejection.
 
-The browser tests use the synthetic preview. No live Supabase project or Meta developer application was configured. Live signup/confirmation, session lifecycle, API-to-Supabase access, and actual social messaging remain unverified. This is the first local CRM milestone, not a production release.
+The application now uses `intouch-dev` (`qsecrqhxqfesdvintdmy`, us-east-1). The initial migration is applied and all eight CRM tables have row-level security enabled. The demo fallback and synthetic records are removed.
+
+Tests create temporary confirmed users and generate signup/recovery links with the test-only administration key; they remove their own accounts and CRM records afterward. No test emails are sent. Email delivery, public registration for users outside the Supabase organization, team invitations, and live Meta messaging remain unverified or unimplemented. Custom SMTP is still needed for external users. The application runs locally; its data and authentication are hosted in Supabase.

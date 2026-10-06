@@ -1,0 +1,11 @@
+﻿project_id = "intouch"
+
+[auth]
+site_url = "http://127.0.0.1:3100"
+additional_redirect_urls = ["http://127.0.0.1:3100", "http://127.0.0.1:3100/**"]
+enable_signup = true
+minimum_password_length = 10
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true

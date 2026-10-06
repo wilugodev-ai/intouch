@@ -1,4 +1,4 @@
-import 'reflect-metadata';
+﻿import 'reflect-metadata';
 import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpException, Injectable, Module, Param, Patch, Post, UnauthorizedException, ServiceUnavailableException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { createClient } from '@supabase/supabase-js';
@@ -9,7 +9,7 @@ function uuid(value: string) {
 }
 const fields: Record<string, string[]> = { contacts: ['name', 'email', 'phone', 'company', 'status'], deals: ['title', 'contact_id', 'value_cents', 'stage'], tasks: ['title', 'contact_id', 'due_date', 'done'] };
 function payload(table: string, input: unknown, partial = false) {
-  if (!fields[table]) throw new BadRequestException('Unknown resource');
+  if (!Object.hasOwn(fields,table)) throw new BadRequestException('Unknown resource');
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('Expected an object');
   const body = input as Record<string, unknown>;
   if (Object.keys(body).some(k => !fields[table].includes(k))) throw new BadRequestException('Unsupported field');
@@ -52,7 +52,7 @@ class CrmController {
   @Post('workspaces') async createWorkspace(@Body() body: {name?: unknown}, @Headers('authorization') auth?: string) {
     if (!body || typeof body.name !== 'string' || !body.name.trim() || body.name.length > 100) throw new BadRequestException('Workspace name is required (100 characters maximum)');
     const client = await this.db.client(auth);
-    const { data, error } = await client.rpc('create_workspace', { workspace_name: body.name.trim() }); this.db.check(error); return data;
+    const { data, error } = await client.rpc('create_workspace', { workspace_name: body.name.trim() }); this.db.check(error); return {id:data};
   }
   @Get('workspaces/:workspace/state') async state(@Param('workspace') workspace: string, @Headers('authorization') auth?: string) {
     uuid(workspace); const client = await this.db.client(auth);
@@ -73,7 +73,7 @@ class CrmController {
     if (!data) throw new HttpException('Record not found', 404); return data;
   }
   @Delete('workspaces/:workspace/:table/:id') async remove(@Param('workspace') workspace: string, @Param('table') table: string, @Param('id') id: string, @Headers('authorization') auth?: string) {
-    if (!fields[table]) throw new BadRequestException('Unknown resource'); const client = await this.db.client(auth);
+    if (!Object.hasOwn(fields,table)) throw new BadRequestException('Unknown resource'); const client = await this.db.client(auth);
     const { data, error } = await client.from(table).delete().eq('workspace_id', uuid(workspace)).eq('id', uuid(id)).select('id'); this.db.check(error);
     if (!data?.length) throw new HttpException('Record not found', 404); return { deleted: true };
   }
