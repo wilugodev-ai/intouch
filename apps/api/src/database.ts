@@ -15,6 +15,7 @@ export class Database {
     if(!error)return;
     const messages:Record<string,string>={
       '42501':'You do not have permission for this action, or this invitation does not match your verified email.',
+      '23P01':'This teammate already has an appointment at that time. Choose another time or teammate.',
       '23503':'This record is still in use, or the linked record belongs to another workspace.',
       '23505':'A record with this name already exists.',
       '23514':'Check the fields, selected collaborator, and allowed values.',

@@ -3,6 +3,7 @@ import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpExcept
 import { NestFactory } from '@nestjs/core';
 import { Database } from './database';
 import { WorkflowsController } from './workflows';
+import { BusinessController } from './business';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 
 function uuid(value: string) {
@@ -68,7 +69,7 @@ class CrmController {
     if (!data?.length) throw new HttpException('Record not found', 404); return { deleted: true };
   }
 }
-@Module({ controllers: [CrmController, WorkflowsController], providers: [Database] })
+@Module({ controllers: [CrmController, WorkflowsController, BusinessController], providers: [Database] })
 class AppModule {}
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
