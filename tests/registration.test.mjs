@@ -1,0 +1,63 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile,readdir} from 'node:fs/promises';
+import {PGlite} from '@electric-sql/pglite';
+
+test('public registration protects customers and records consent only after authorized review',async()=>{
+  const db=new PGlite();
+  try{
+    await db.exec(`create role anon;create role authenticated;create schema auth;
+      create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);
+      create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+      grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;`);
+    const directory=new URL('../supabase/migrations/',import.meta.url);for(const file of (await readdir(directory)).filter(f=>f.endsWith('.sql')).sort())await db.exec(await readFile(new URL(file,directory),'utf8'));
+    const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',request='33333333-3333-4333-8333-333333333333',request2='44444444-4444-4444-8444-444444444444';
+    await db.query("insert into auth.users values($1,'owner@example.com',now()),($2,'other@example.com',now())",[a,b]);
+    async function asUser(user){await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[user||'']);await db.exec(user?'set role authenticated':'set role anon');}
+    await asUser(a);const workspace=(await db.query("select public.create_workspace('Our business') as id")).rows[0].id;
+    const form=(await db.query('insert into public.registration_forms(workspace_id,enabled) values($1,true) returning *',[workspace])).rows[0];
+    const fields={name:'Public customer',email:'customer@example.com',phone:'+15551234567',company:'Company',birth_month:2,birth_day:29,birth_year:null,preferred_channel:'email',marketing_email:true,marketing_whatsapp:false,acknowledged:true};
+    await asUser(null);const metadata=(await db.query('select public.public_registration_form($1) as f',[form.token])).rows[0].f;assert.equal(metadata.business,'Our business');assert.equal(metadata.workspace_id,undefined);
+    for(const table of ['contacts','registration_forms','registration_submissions','contact_consent_events'])await assert.rejects(db.query('select * from public.'+table),/permission denied/);
+    await db.query('select public.submit_registration($1,$2,$3,$4::jsonb)',[form.token,request,form.revision,JSON.stringify(fields)]);
+    await db.query('select public.submit_registration($1,$2,$3,$4::jsonb)',[form.token,request,form.revision,JSON.stringify({...fields,name:'Changed retry'})]);
+    await assert.rejects(db.query('select public.submit_registration($1,$2,$3,$4::jsonb)',[form.token,request2,form.revision,JSON.stringify({...fields,birth_day:30})]),/check constraint/);
+    await assert.rejects(db.query('select public.submit_registration($1,$2,$3,$4::jsonb)',[form.token,request2,form.revision,JSON.stringify({...fields,workspace_id:workspace})]),/Invalid registration/);
+    await asUser(a);assert.equal((await db.query('select * from public.contacts')).rows.length,0);let submissions=(await db.query('select * from public.registration_submissions')).rows;assert.equal(submissions.length,1);assert.equal(submissions[0].name,'Public customer');
+    const customer=(await db.query('select public.review_registration($1,$2) as id',[workspace,submissions[0].id])).rows[0].id;
+    assert.equal((await db.query('select public.review_registration($1,$2) as id',[workspace,submissions[0].id])).rows[0].id,customer);
+    assert.equal((await db.query('select * from public.contacts')).rows.length,1);assert.equal((await db.query('select * from public.contact_consent_events')).rows.length,1);
+    assert.equal((await db.query('select marketing_email from public.contacts')).rows[0].marketing_email,true);
+    await assert.rejects(db.query('update public.contacts set marketing_whatsapp=true where id=$1',[customer]),/permission denied/);
+    await assert.rejects(db.query("insert into public.contact_consent_events(workspace_id,contact_id,source,marketing_email,marketing_whatsapp,notice) values($1,$2,'staff_withdrawal',true,true,'{}')",[workspace,customer]),/permission denied/);
+    await asUser(null);await db.query('select public.submit_registration($1,$2,$3,$4::jsonb)',[form.token,request2,form.revision,JSON.stringify({...fields,name:'Updated customer',marketing_email:false})]);
+    await asUser(a);const update=(await db.query("select * from public.registration_submissions where status='pending'")).rows[0];
+    assert.equal((await db.query('select name from public.contacts')).rows[0].name,'Public customer');
+    await assert.rejects(db.query('select public.review_registration($1,$2)',[workspace,update.id]),/matching contact exists/);
+    await assert.rejects(db.query('select public.review_registration($1,$2,$3,false)',[workspace,update.id,customer]),/Verify the customer/);
+    await asUser(b);const other=(await db.query("select public.create_workspace('Other business') as id")).rows[0].id;
+    const foreignContact=(await db.query("insert into public.contacts(workspace_id,name,email) values($1,'Other customer','customer@example.com') returning id",[other])).rows[0].id;
+    assert.equal((await db.query('select * from public.registration_submissions')).rows.length,0);await assert.rejects(db.query('select public.review_registration($1,$2)',[workspace,update.id]),/Access denied/);
+    await db.exec('reset role');await db.query("insert into public.workspace_members(workspace_id,user_id,role) values($1,$2,'viewer')",[workspace,b]);await asUser(b);
+    await assert.rejects(db.query('select public.registration_matches($1,$2)',[workspace,update.id]),/Access denied/);
+    await asUser(a);await assert.rejects(db.query('select public.review_registration($1,$2,$3,true)',[workspace,update.id,foreignContact]),/matching contact/);
+    assert.equal((await db.query('select * from public.registration_matches($1,$2)',[workspace,update.id])).rows[0].id,customer);
+    await db.query('select public.review_registration($1,$2,$3,true)',[workspace,update.id,customer]);assert.equal((await db.query('select name,marketing_email from public.contacts')).rows[0].marketing_email,false);
+    await db.query('select public.withdraw_contact_marketing($1,$2)',[workspace,customer]);assert.equal((await db.query('select * from public.contact_consent_events')).rows.length,3);
+    await db.query('select public.review_registration($1,$2)',[workspace,submissions[0].id]);assert.equal((await db.query('select marketing_email from public.contacts')).rows[0].marketing_email,false);
+    await db.query("update public.registration_forms set description='Updated text' where workspace_id=$1",[workspace]);
+    await asUser(null);await assert.rejects(db.query('select public.submit_registration($1,gen_random_uuid(),$2,$3::jsonb)',[form.token,form.revision,JSON.stringify(fields)]),/Form changed/);
+    await asUser(a);await db.query('update public.registration_forms set enabled=false where workspace_id=$1',[workspace]);await asUser(null);
+    assert.equal((await db.query('select public.public_registration_form($1) as f',[form.token])).rows[0].f,null);
+    await assert.rejects(db.query('select public.submit_registration($1,gen_random_uuid(),3,$2::jsonb)',[form.token,JSON.stringify(fields)]),/Form unavailable/);
+    await asUser(a);const rotated=(await db.query('update public.registration_forms set token=gen_random_uuid(),enabled=true where workspace_id=$1 returning token,revision',[workspace])).rows[0];await asUser(null);
+    assert.equal((await db.query('select public.public_registration_form($1) as f',[form.token])).rows[0].f,null);
+    for(let i=0;i<98;i++)await db.query('select public.submit_registration($1,gen_random_uuid(),$2,$3::jsonb)',[rotated.token,rotated.revision,JSON.stringify(fields)]);
+    await assert.rejects(db.query('select public.submit_registration($1,gen_random_uuid(),$2,$3::jsonb)',[rotated.token,rotated.revision,JSON.stringify(fields)]),/submission limit/);
+    await asUser(a);const queued=(await db.query("select id from public.registration_submissions where status='pending' order by created_at limit 2")).rows;
+    await db.query('select public.review_registration($1,$2,$3,true)',[workspace,queued[0].id,customer]);assert.equal((await db.query('select marketing_email from public.contacts')).rows[0].marketing_email,true);
+    await db.query("update public.contacts set email='different@example.com' where id=$1",[customer]);assert.equal((await db.query('select marketing_email from public.contacts')).rows[0].marketing_email,false);
+    assert.equal((await db.query("select * from public.contact_consent_events where source='contact_details_changed'")).rows.length,1);
+    await db.query('select public.review_registration($1,$2,$3,true)',[workspace,queued[1].id,customer]);assert.equal((await db.query('select marketing_email from public.contacts')).rows[0].marketing_email,true);
+  }finally{await db.close();}
+});

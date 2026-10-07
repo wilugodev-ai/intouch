@@ -1,4 +1,4 @@
-export type Contact = {id: string; name: string; email: string; phone: string; company: string; tags: string[]; website: string; assigned_to: string|null; status: 'Lead'|'Customer'|'Inactive'};
+export type Contact = {birth_month:number|null;birth_day:number|null;birth_year:number|null;preferred_channel:'none'|'email'|'phone'|'whatsapp';marketing_email:boolean;marketing_whatsapp:boolean;id: string; name: string; email: string; phone: string; company: string; tags: string[]; website: string; assigned_to: string|null; status: 'Lead'|'Customer'|'Inactive'};
 export type Deal = {id: string; title: string; contact_id: string|null; value_cents: number; stage: string};
 export type Task = {id: string; title: string; contact_id: string|null; assigned_to: string|null; due_date: string; done: boolean};
 export type Channel = 'WhatsApp'|'Facebook'|'Instagram';

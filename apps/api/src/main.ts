@@ -4,13 +4,14 @@ import { NestFactory } from '@nestjs/core';
 import { Database } from './database';
 import { WorkflowsController } from './workflows';
 import { BusinessController } from './business';
+import {RegistrationController,birthday} from './registration';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 
 function uuid(value: string) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) throw new BadRequestException('Invalid record ID');
   return value;
 }
-const fields: Record<string, string[]> = { contacts: ['name', 'email', 'phone', 'company', 'status', 'tags', 'website', 'assigned_to'], deals: ['title', 'contact_id', 'value_cents', 'stage'], tasks: ['title', 'contact_id', 'due_date', 'done', 'assigned_to'] };
+const fields: Record<string, string[]> = { contacts: ['name', 'email', 'phone', 'company', 'status', 'tags', 'website', 'assigned_to', 'birth_month', 'birth_day', 'birth_year', 'preferred_channel'], deals: ['title', 'contact_id', 'value_cents', 'stage'], tasks: ['title', 'contact_id', 'due_date', 'done', 'assigned_to'] };
 function payload(table: string, input: unknown, partial = false) {
   if (!Object.hasOwn(fields,table)) throw new BadRequestException('Unknown resource');
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('Expected an object');
@@ -19,12 +20,15 @@ function payload(table: string, input: unknown, partial = false) {
   if (!partial && !body[table === 'contacts' ? 'name' : 'title']) throw new BadRequestException('A name or title is required');
   for (const [key, value] of Object.entries(body)) {
     if (key === 'value_cents') { if (!Number.isSafeInteger(value) || Number(value) < 0 || Number(value) > 100000000000) throw new BadRequestException('Invalid deal value'); }
+    else if (['birth_month','birth_day','birth_year'].includes(key)) {if(value!==null&&!Number.isInteger(value))throw new BadRequestException('Invalid birthday');}
     else if (key === 'done') { if (typeof value !== 'boolean') throw new BadRequestException('Invalid completion state'); }
     else if (key === 'tags') { if (!Array.isArray(value) || value.length>20 || value.some(t=>typeof t!=='string'||!t.trim()||t.length>40)) throw new BadRequestException('Invalid tags'); }
     else if (key === 'contact_id' || key === 'assigned_to') { if (value !== null) uuid(String(value)); }
     else if (key === 'due_date') { if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) throw new BadRequestException('Invalid date'); }
     else if (typeof value !== 'string' || value.length > 300 || (['name', 'title'].includes(key) && !value.trim())) throw new BadRequestException('Invalid text field');
   }
+  if(table==='contacts'&&['birth_month','birth_day','birth_year'].some(k=>k in body))birthday(body);
+  if(body.preferred_channel&&!['none','email','phone','whatsapp'].includes(String(body.preferred_channel)))throw new BadRequestException('Invalid contact preference');
   if (body.status && !['Lead', 'Customer', 'Inactive'].includes(String(body.status))) throw new BadRequestException('Invalid contact status');
   if (body.stage && String(body.stage).length>50) throw new BadRequestException('Invalid deal stage');
   if(body.website && !/^https?:\/\//.test(String(body.website))) throw new BadRequestException('Website must start with http:// or https://');
@@ -69,7 +73,7 @@ class CrmController {
     if (!data?.length) throw new HttpException('Record not found', 404); return { deleted: true };
   }
 }
-@Module({ controllers: [CrmController, WorkflowsController, BusinessController], providers: [Database] })
+@Module({ controllers: [CrmController, WorkflowsController, BusinessController, RegistrationController], providers: [Database] })
 class AppModule {}
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
