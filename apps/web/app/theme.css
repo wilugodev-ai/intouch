@@ -1,0 +1,54 @@
+:root { color-scheme: light; }
+.theme-select { display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:12px; }
+.theme-select select { padding:8px 10px;min-width:105px;font-size:12px; }
+.account-panel .theme-select { padding:10px 12px 14px;border-bottom:1px solid var(--line);margin-bottom:6px; }
+.auth-appearance { display:flex;justify-content:flex-end;margin-bottom:28px; }
+
+html[data-theme=dark] {
+  color-scheme:dark;
+  --ink:#e2ebe5;
+  --muted:#a2b2a8;
+  --green:#7acbaa;
+  --line:#34453b;
+  --paper:#141c18;
+  --mint:#293e32;
+  --white:#1e2923;
+}
+html[data-theme=dark] :is(.sidebar,.topbar,.stat-card,.panel,.conversation-row,.deal-card,.message,dialog) {
+  background:var(--white);
+}
+html[data-theme=dark] :is(input,select,textarea,.workflow-panel input,.workflow-panel select,.form-grid textarea,.report-filters input) {
+  color:var(--ink);background:#18211c;border-color:var(--line);
+}
+html[data-theme=dark] :is(input,select,textarea):focus { outline-color:var(--green); }
+html[data-theme=dark] .workspace-card select { background:transparent; }
+html[data-theme=dark] :is(.auth-story,.auth-notice,.demo-banner,.channel-strip,.connect-prompt,.workspace-card,.kanban-column,th,.messages) {
+  background:#202f25;border-color:var(--line);
+}
+html[data-theme=dark] :is(.auth-notice,.auth-features span,.channel-strip h2,.demo-banner strong,.demo-banner button,.text-button,.secondary) {
+  color:var(--green);
+}
+html[data-theme=dark] :is(.auth-story p,.auth-card>p,.nav-label,.nav-item,.connect-prompt p,.breadcrumb,.mode-pill,.demo-banner,.eyebrow,.page-heading p,.stat-top,.stat-top svg,.stat-card small,.section-heading p,.conversation-summary>span,.conversation-row>svg,.task-row small,.add-task,.channel-strip p,.stage-summary>div,.search,th,td,.kanban-heading>span:last-child,.deal-card p,.due-date,.channel-card p,.channel-requirement,.connection-note,.connection-note p,.composer label,.empty,.onboard p,footer,.form-grid p,.setup-message p,.activity small,.due-date small) {
+  color:var(--muted);
+}
+html[data-theme=dark] :is(.breadcrumb strong,.stage-summary strong,td strong) { color:var(--ink); }
+html[data-theme=dark] .breadcrumb span { color:#83988a; }
+html[data-theme=dark] :is(.nav-item.active,.inbox-item.selected,.message.outbound) { background:var(--mint);color:var(--green);border-color:var(--line); }
+html[data-theme=dark] :is(.nav-item:hover,.conversation-row:hover,.secondary:hover) { background:#2c3c31; }
+html[data-theme=dark] .secondary { background:var(--white);border-color:var(--line); }
+html[data-theme=dark] .primary { background:#24705a;border-color:#3b886c;color:#fff; }
+html[data-theme=dark] .primary:hover { background:#2d8066; }
+html[data-theme=dark] .brand-mark { color:#142c21; }
+html[data-theme=dark] :is(.avatar,.workspace-icon,.conversation-row:nth-of-type(2) .avatar,.conversation-row:nth-of-type(3) .avatar,.conversation-row:nth-of-type(4) .avatar) { background:#36483a;color:#c9ddc3; }
+html[data-theme=dark] :is(.count,.soft-count,.status,.status.customer,.whatsapp) { background:#2b4232;color:#a5d6af; }
+html[data-theme=dark] .status.lead { background:#453c25;color:#e8cb86; }
+html[data-theme=dark] .facebook { background:#293e58;color:#a5c5f3; }
+html[data-theme=dark] .instagram { background:#492f41;color:#ecb0d1; }
+html[data-theme=dark] .completed strong { color:#94a399; }
+html[data-theme=dark] .notice { background:#3e3420;border-color:#675432;color:#f0d69e; }
+html[data-theme=dark] .form-actions .danger { color:#f1a293; }
+html[data-theme=dark] :is(.conversation-row,.task-row,.inbox-item,.deal-card,.message,.activity,.stage-form) { border-color:var(--line); }
+html[data-theme=dark] .channel-art .channel-badge { background:#29372f;border-color:var(--line); }
+html[data-theme=dark] dialog::backdrop { background:#0009; }
+/* Keep QR codes high contrast for cameras in both themes. */
+.registration-qr { background:#fff; }

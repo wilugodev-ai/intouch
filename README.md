@@ -1,4 +1,8 @@
-# InTouch
+# Touchlumo
+
+Smarter Connections. Stronger Relationships.
+
+The planned public domain is `touchlumo.com`. It has not been activated by this rebrand. See [domain launch steps](docs/touchlumo-launch.md) and the [rebrand audit](docs/rebrand-touchlumo.md) before changing working origins or authentication callbacks.
 
 A CRM for independent businesses to manage their own customers, deals, follow-ups, and eventually WhatsApp, Facebook Messenger, and Instagram conversations.
 
@@ -23,7 +27,7 @@ The current development project is [intouch-dev](https://supabase.com/dashboard/
 
 ## Enable real accounts and CRM storage
 
-1. Create a separate Supabase development project for InTouch.
+1. Create a separate Supabase development project for Touchlumo.
 2. Apply the files in `supabase/migrations` in filename order, once each, or link the project and run `supabase db push`.
 3. Copy `apps/web/.env.example` to `apps/web/.env.local` and `apps/api/.env.example` to `apps/api/.env`.
 4. Set the same Supabase project URL and publishable key in both files. No service-role key is needed.
@@ -33,6 +37,8 @@ The current development project is [intouch-dev](https://supabase.com/dashboard/
 Real accounts start with empty workspaces. All CRM requests use a verified Supabase user access token; row-level security enforces workspace membership. Workspace creation and owner membership happen in one database transaction. Cross-workspace foreign keys are rejected. Workspace IDs cannot be changed on existing CRM records. Only whitelisted fields can be changed through the API.
 
 Multiple independent users can create their own workspaces. Password reset and password update screens are available through Supabase Auth. Email delivery requires a working Supabase email configuration. Owners can invite teammates, change their role, and remove access. Account deletion UI is still pending.
+
+Password fields include Show/Hide controls. The browser signs users out after 30 minutes without interaction; activity is shared across tabs, and refreshing or reopening the app does not reset the timer. Returning after sleep also checks the deadline. The login page and account menu offer Light, Dark, and System appearance options, saved in this browser and kept after sign-out.
 
 ## CRM workflows
 
@@ -49,7 +55,7 @@ Contact detail shows the latest 200 notes and 200 history events. History is gen
 
 1. An owner opens **Registration**, customizes the title/welcome message and optional privacy-policy URL, checks **Accept public registrations**, and saves.
 2. Copy the link or download the QR code. QR generation runs locally; the SVG download includes a white quiet zone. Forms can be paused; replacing a link invalidates the previous link and QR code.
-3. Customers open `/register/[token]` without creating an InTouch account. They provide a name and at least an email or international-format phone number. Company, birthday, birth year, preferred contact channel, and promotional email/WhatsApp consent are optional. Marketing checkboxes are unchecked by default; acknowledging the data notice is separate from marketing consent.
+3. Customers open `/register/[token]` without creating an Touchlumo account. They provide a name and at least an email or international-format phone number. Company, birthday, birth year, preferred contact channel, and promotional email/WhatsApp consent are optional. Marketing checkboxes are unchecked by default; acknowledging the data notice is separate from marketing consent.
 4. Owners and members review pending submissions. Approval creates a contact. Existing matches are never overwritten automatically: a teammate must select a matching record and attest that they verified the request with the customer through a trusted channel. Empty submitted email, phone, company, or birthday values preserve existing details; an explicitly supplied birthday without a year removes a previously stored year. Submitted marketing choices replace the old choices after verified review.
 
 The database records the original notice, choices, submission time, reviewer and review time. Contact details display consent history and allow teammates to withdraw all marketing consent. Editing an email address or phone number clears its corresponding opt-in; an explicitly reviewed new submission can record consent for the new destination. A preferred channel alone is not marketing consent. Birthday fields can also be edited manually; birthday CSV columns and automatic birthday messaging are not implemented.

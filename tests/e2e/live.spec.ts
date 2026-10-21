@@ -45,6 +45,164 @@ test('real CRM persists across browser sessions and isolates users',async({page,
     await page.getByRole('button',{name:'Sign out',exact:true}).first().click();await expect(page.getByRole('heading',{name:'Welcome back'})).toBeVisible();
   }finally{await cleanup(a.id);await cleanup(b.id);}
 });
+test('account button opens account actions on desktop and mobile and signs out',async({page})=>{
+  test.skip(!url||!key||!pub,'Configure .env.test.local for real Supabase tests.');
+  test.setTimeout(90000);
+  const user=await account();
+  try{
+    await page.goto('/');
+    await page.getByLabel('Email',{exact:true}).fill(user.email);
+    await page.getByLabel('Password',{exact:true}).fill(user.password);
+    await page.getByRole('button',{name:'Sign in',exact:true}).click();
+    const trigger=page.getByRole('button',{name:'Your account',exact:true});
+    const menu=page.getByRole('region',{name:'Account menu',exact:true});
+    await trigger.click();
+    await expect(menu.getByText(user.email,{exact:true})).toBeVisible();
+    await expect(page.getByRole('link',{name:'Touchlumo home',exact:true})).toHaveText('Touchlumo.');
+    expect(await page.getByRole('link',{name:'Touchlumo home',exact:true}).evaluate(element=>element.scrollWidth<=element.clientWidth)).toBeTruthy();
+    await menu.getByLabel('Appearance',{exact:true}).selectOption('dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+    await page.screenshot({path:'.data/touchlumo-dark-account-desktop.png',fullPage:true});
+    await page.keyboard.press('Escape');
+    await expect(menu).not.toBeVisible();
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press('Enter');
+    await menu.getByRole('button',{name:'Change password',exact:true}).click();
+    await page.getByLabel('New password',{exact:true}).fill(user.password+'updated');
+    await page.getByRole('button',{name:'Show password',exact:true}).click();
+    await expect(page.getByLabel('New password',{exact:true})).toHaveAttribute('type','text');
+    await page.getByRole('button',{name:'Hide password',exact:true}).click();
+    await expect(page.getByLabel('New password',{exact:true})).toHaveAttribute('type','password');
+    await page.getByRole('button',{name:'Update password',exact:true}).click();
+    await expect(page.getByText('Your password has been updated.',{exact:true})).toBeVisible();
+    const session=await remote('/auth/v1/token?grant_type=password','POST',{email:user.email,password:user.password+'updated'},pub);
+    expect(session.user.id).toBe(user.id);
+    await trigger.click();
+    await menu.getByRole('button',{name:'New workspace',exact:true}).click();
+    await expect(page.getByRole('dialog',{name:'',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Close dialog',exact:true}).click();
+    await page.setViewportSize({width:390,height:844});
+    await trigger.click();
+    await expect(menu).toBeVisible();
+    await expect(menu.getByLabel('Appearance',{exact:true})).toHaveValue('dark');
+    await page.screenshot({path:'.data/touchlumo-dark-account-mobile.png',fullPage:true});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+    const bounds=await menu.boundingBox();
+    expect(bounds&&bounds.x>=0&&bounds.x+bounds.width<=390).toBeTruthy();
+    await page.getByText('Private workspace',{exact:true}).click();
+    await expect(menu).not.toBeVisible();
+    await trigger.click();
+    await menu.getByRole('button',{name:'Sign out',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+    await expect(page.getByLabel('Appearance',{exact:true})).toHaveValue('dark');
+  }finally{await cleanup(user.id);}
+});
+
+test('password visibility toggles on sign-in and sign-up without submitting',async({page})=>{
+  await page.goto('/');
+  const password=page.getByLabel('Password',{exact:true});
+  await password.fill('Visibility test password');
+  await expect(password).toHaveAttribute('type','password');
+  await page.getByRole('button',{name:'Show password',exact:true}).click();
+  await expect(password).toHaveAttribute('type','text');
+  await expect(password).toHaveValue('Visibility test password');
+  await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Hide password',exact:true}).click();
+  await expect(password).toHaveAttribute('type','password');
+  await page.getByRole('button',{name:'New here? Create an account',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Create your account',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Show password',exact:true}).click();
+  await expect(password).toHaveAttribute('type','text');
+  await page.getByRole('button',{name:'Hide password',exact:true}).click();
+  await expect(password).toHaveAttribute('type','password');
+});
+
+test('inactivity logout resets on interaction but survives reload and clears the session',async({page})=>{
+  test.skip(!url||!key||!pub,'Configure .env.test.local for real Supabase tests.');
+  test.setTimeout(90000);
+  const user=await account();
+  try{
+    await page.clock.install();
+    await page.goto('/');
+    await page.getByLabel('Email',{exact:true}).fill(user.email);
+    await page.getByLabel('Password',{exact:true}).fill(user.password);
+    await page.getByRole('button',{name:'Sign in',exact:true}).click();
+    const trigger=page.getByRole('button',{name:'Your account',exact:true});
+    await expect(trigger).toBeVisible();
+    await page.clock.fastForward(29*60*1000);
+    await trigger.click();
+    await page.clock.fastForward(29*60*1000);
+    await expect(trigger).toBeVisible();
+    await page.reload();
+    await expect(trigger).toBeVisible();
+    await page.clock.fastForward(60*1000+1000);
+    await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+    await expect(page.getByRole('alert').filter({hasText:'30 minutes of inactivity'})).toHaveText('You were signed out after 30 minutes of inactivity. Please sign in again.');
+    await expect(trigger).not.toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+    // A fresh password sign-in starts a new period of activity.
+    await page.getByLabel('Email',{exact:true}).fill(user.email);
+    await page.getByLabel('Password',{exact:true}).fill(user.password);
+    await page.getByRole('button',{name:'Sign in',exact:true}).click();
+    await expect(trigger).toBeVisible();
+  }finally{await cleanup(user.id);}
+});
+
+test('returning after sleep expires an idle session even while offline',async({page,context})=>{
+  test.skip(!url||!key||!pub,'Configure .env.test.local for real Supabase tests.');
+  test.setTimeout(90000);
+  const user=await account();
+  try{
+    await page.clock.install();
+    await page.goto('/');
+    await page.getByLabel('Email',{exact:true}).fill(user.email);
+    await page.getByLabel('Password',{exact:true}).fill(user.password);
+    await page.getByRole('button',{name:'Sign in',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Your account',exact:true})).toBeVisible();
+    await context.setOffline(true);
+    await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+30*60*1000+1000));
+    // Simulate resuming without running the timer during sleep.
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+    await expect(page.getByRole('alert').filter({hasText:'30 minutes of inactivity'})).toBeVisible();
+    await context.setOffline(false);
+    await page.reload();
+    await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+  }finally{await context.setOffline(false);await cleanup(user.id);}
+});
+
+test('activity in another tab keeps the session active and idle logout reaches both tabs',async({page,context})=>{
+  test.skip(!url||!key||!pub,'Configure .env.test.local for real Supabase tests.');
+  test.setTimeout(90000);
+  const user=await account();
+  try{
+    await page.clock.install();
+    await page.goto('/');
+    await page.getByLabel('Email',{exact:true}).fill(user.email);
+    await page.getByLabel('Password',{exact:true}).fill(user.password);
+    await page.getByRole('button',{name:'Sign in',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Your account',exact:true})).toBeVisible();
+    const peer=await context.newPage();
+    await peer.clock.install({time:new Date(await page.evaluate(()=>Date.now()))});
+    await peer.goto('/');
+    await expect(peer.getByRole('button',{name:'Your account',exact:true})).toBeVisible();
+    await page.clock.fastForward(29*60*1000);
+    await peer.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())));
+    await peer.bringToFront();
+    await peer.getByRole('button',{name:'Your account',exact:true}).click();
+    await page.clock.fastForward(2*60*1000);
+    await expect(page.getByRole('button',{name:'Your account',exact:true})).toBeVisible();
+    await peer.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())));
+    await peer.clock.fastForward(28*60*1000+1000);
+    await expect(peer.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+    await peer.close();
+  }finally{await cleanup(user.id);}
+});
+
 test('Supabase confirmation and recovery links establish a session and update passwords',async({page})=>{
   test.skip(!url||!key||!pub,'Configure .env.test.local for real Supabase tests.');test.setTimeout(60000);
   const email=`intouch-confirm-${randomBytes(8).toString('hex')}@example.com`,password=randomBytes(24).toString('base64url');
@@ -98,10 +256,10 @@ test('business modules execute automations, manage quotes, appointments and supp
     await page.getByRole('button',{name:'Quotes',exact:true}).click();await page.getByRole('button',{name:'New quote',exact:true}).click();await page.getByLabel('Title',{exact:true}).fill('Service proposal');await page.getByLabel('Customer',{exact:true}).selectOption({label:'Business customer'});await page.getByLabel('Description 1',{exact:true}).fill('Service <b>literal text</b>');await page.getByLabel('Quantity 1',{exact:true}).fill('2');await page.getByLabel('Unit price USD 1',{exact:true}).fill('10.50');await page.getByLabel('Tax percent',{exact:true}).fill('7.5');await page.getByRole('button',{name:'Save record',exact:true}).click();await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.getByText('$22.58 USD · Valid until not set')).toBeVisible();
     const popupPromise=page.waitForEvent('popup');await page.getByRole('button',{name:'Print / PDF',exact:true}).click();const popup=await popupPromise;await expect(popup.getByText('Service <b>literal text</b>',{exact:true})).toBeVisible();await expect(popup.getByRole('heading',{name:'Total: $22.58 USD'})).toBeVisible();await popup.close();
     await page.getByRole('button',{name:'Appointments',exact:true}).click();await page.getByRole('button',{name:'New appointment',exact:true}).click();await page.getByLabel('Title',{exact:true}).fill('Customer meeting');await page.getByLabel('Assigned teammate',{exact:true}).selectOption({label:user.email});await page.getByLabel('Starts at',{exact:true}).fill('2030-01-10T10:00');await page.getByLabel('Ends at',{exact:true}).fill('2030-01-10T11:00');await page.getByRole('button',{name:'Save record',exact:true}).click();await expect(page.getByRole('dialog')).not.toBeVisible();
-    const calendarPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Calendar file',exact:true}).click();expect((await calendarPromise).suggestedFilename()).toBe('appointment.ics');
+    const calendarPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Calendar file',exact:true}).click();const calendar=await calendarPromise;expect(calendar.suggestedFilename()).toBe('appointment.ics');const calendarText=readFileSync((await calendar.path())!,'utf8');expect(calendarText).toContain('PRODID:-//Touchlumo//CRM//EN');expect(calendarText).toMatch(/UID:[^\r\n]+@intouch/);
     await page.getByRole('button',{name:'New appointment',exact:true}).click();await page.getByLabel('Title',{exact:true}).fill('Conflicting meeting');await page.getByLabel('Assigned teammate',{exact:true}).selectOption({label:user.email});await page.getByLabel('Starts at',{exact:true}).fill('2030-01-10T10:30');await page.getByLabel('Ends at',{exact:true}).fill('2030-01-10T11:30');await page.getByRole('button',{name:'Save record',exact:true}).click();await expect(page.getByRole('dialog').getByRole('alert')).toContainText('already has an appointment');await page.getByRole('button',{name:'Close dialog'}).click();
     await page.getByRole('button',{name:'Tickets',exact:true}).click();await page.getByRole('button',{name:'New ticket',exact:true}).click();await page.getByLabel('Title',{exact:true}).fill('Customer support request');await page.getByLabel('Priority',{exact:true}).selectOption('urgent');await page.getByLabel('Record status',{exact:true}).selectOption('resolved');await page.getByLabel('Description',{exact:true}).fill('Issue fixed during the customer call.');await page.getByRole('button',{name:'Save record',exact:true}).click();await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.getByRole('article').getByText('Resolved',{exact:true})).toBeVisible();
-    await page.getByRole('button',{name:'Reports',exact:true}).click();await expect(page.locator('.stat-card').filter({hasText:'New contacts'}).locator('.stat-value')).toHaveText('1');await expect(page.locator('.stat-card').filter({hasText:'Resolved tickets'}).locator('.stat-value')).toHaveText('1');const reportPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Export CSV',exact:true}).click();expect((await reportPromise).suggestedFilename()).toBe('intouch-report.csv');
+    await page.getByRole('button',{name:'Reports',exact:true}).click();await expect(page.locator('.stat-card').filter({hasText:'New contacts'}).locator('.stat-value')).toHaveText('1');await expect(page.locator('.stat-card').filter({hasText:'Resolved tickets'}).locator('.stat-value')).toHaveText('1');const reportPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Export CSV',exact:true}).click();const report=await reportPromise;expect(report.suggestedFilename()).toBe('touchlumo-report.csv');expect(readFileSync((await report.path())!,'utf8')).toContain('Touchlumo sales report (USD)');
     await page.getByRole('button',{name:'Automations',exact:true}).click();await expect(page.getByText('Follow-up created ·',{exact:false})).toBeVisible();
     await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Tickets',exact:true}).click();await expect(page.getByText('Customer support request',{exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
   }finally{await cleanup(user.id);}

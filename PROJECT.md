@@ -1,4 +1,8 @@
-# InTouch project
+# Touchlumo project
+
+Smarter Connections. Stronger Relationships.
+
+The Touchlumo rebrand preserves the existing technical identities and development project. `touchlumo.com` is planned; domain ownership and deployment have not been verified or changed. See [domain launch steps](docs/touchlumo-launch.md).
 
 ## Product
 
