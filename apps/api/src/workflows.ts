@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, BadRequestException, HttpException } from '@nestjs/common';
+import {requireContact} from './records';
+import { Body, Header, Controller, Delete, Get, Headers, Param, Patch, Post, BadRequestException, HttpException } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { Database } from './database';
 import { parseContacts } from './imports';
@@ -30,6 +31,19 @@ export class WorkflowsController {
   @Post('invitations/accept') async accept(@Body() body:{token:unknown},@Headers('authorization') auth?:string){
     const token=text(body?.token,100);if(!/^[\w-]{43}$/.test(token))throw new BadRequestException('Invalid invitation');
     const client=await this.db.client(auth);const {data,error}=await client.rpc('accept_invite',{invite_hash:hash(token)});this.db.check(error);return {workspace_id:data};
+  }
+  @Get('crm/:workspace/contacts/:contact/profile')
+  @Header('Cache-Control', 'private, no-store')
+  async profile(@Param('workspace') workspace:string,@Param('contact') contact:string,@Headers('authorization') auth?:string){
+    const client=await this.db.client(auth),customer=await requireContact(client,this.db,workspace,contact);
+    const results=await Promise.all([
+      client.from('tasks').select('id',{count:'exact',head:true}).eq('workspace_id',workspace).eq('contact_id',contact).eq('done',false),
+      client.from('deals').select('id',{count:'exact',head:true}).eq('workspace_id',workspace).eq('contact_id',contact),
+      client.from('quotes').select('id',{count:'exact',head:true}).eq('workspace_id',workspace).eq('contact_id',contact),
+      client.from('appointments').select('id',{count:'exact',head:true}).eq('workspace_id',workspace).eq('contact_id',contact).eq('status','scheduled').gte('ends_at',new Date().toISOString()),
+      client.from('tickets').select('id',{count:'exact',head:true}).eq('workspace_id',workspace).eq('contact_id',contact).neq('status','resolved'),
+    ]);results.forEach(result=>this.db.check(result.error));
+    return {contact:customer,counts:Object.fromEntries(['openTasks','deals','quotes','appointments','tickets'].map((key,index)=>[key,results[index].count||0]))};
   }
   @Get('crm/:workspace/contacts/:contact/detail') async detail(@Param('workspace') workspace:string,@Param('contact') contact:string,@Headers('authorization') auth?:string){
     const client=await this.db.client(auth);const found=await client.from('contacts').select('id').eq('workspace_id',id(workspace)).eq('id',id(contact)).maybeSingle();this.db.check(found.error);if(!found.data)throw new HttpException('Contact not found',404);

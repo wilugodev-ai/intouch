@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Touchlumo</title>
+  <rect width="64" height="64" rx="20" fill="#24705a"/>
+  <path d="M21 11a9 9 0 0 1-9 9H3l2-5a9 9 0 1 1 16-4Z"
+    transform="translate(11 11) scale(1.75)" fill="none" stroke="#fff"
+    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

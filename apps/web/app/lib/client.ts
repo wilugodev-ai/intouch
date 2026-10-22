@@ -24,3 +24,14 @@ export async function api(path: string, method = 'GET', body?: unknown) {
   if (!response.ok) throw new Error(data.message || 'Something went wrong. Please try again.');
   return data;
 }
+
+export async function apiFile(path:string, options:RequestInit={}) {
+  const session=await supabase?.auth.getSession();
+  if(session?.data.session&&isSessionIdle(session.data.session.user.id))throw new Error('You were signed out after 30 minutes of inactivity. Please sign in again.');
+  const token=session?.data.session?.access_token;
+  if(!token)throw new Error('Sign in to continue');
+  const headers=new Headers(options.headers);headers.set('Authorization',`Bearer ${token}`);
+  const response=await fetch(`${process.env.NEXT_PUBLIC_API_URL||'http://127.0.0.1:4100'}/v1${path}`,{...options,headers,cache:'no-store'});
+  if(!response.ok){let message='The file operation failed. Please try again.';try{const data=await response.json();if(typeof data.message==='string')message=data.message;}catch{}throw new Error(message);}
+  return response;
+}

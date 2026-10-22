@@ -1,7 +1,13 @@
+import {WhatsAppController,WhatsAppWebhookController} from './whatsapp';
+import {WhatsAppStore} from './whatsapp-store';
+import {WhatsAppProvider} from './whatsapp-provider';
 ﻿import 'reflect-metadata';
 import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpException, Module, Param, Patch, Post } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Database } from './database';
+import {AttachmentStore} from './attachment-store';
+import {AttachmentsController, AttachmentAccess, AttachmentUploadLimit} from './attachments';
+import {RecordsController, requireWorkspace} from './records';
 import { WorkflowsController } from './workflows';
 import { BusinessController } from './business';
 import {RegistrationController,birthday} from './registration';
@@ -37,7 +43,7 @@ function payload(table: string, input: unknown, partial = false) {
 }
 @Controller('v1')
 class CrmController {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database, private readonly attachments: AttachmentStore) {}
   @Get('health') health() { return { status: 'ok', service: 'intouch-api', databaseConfigured: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_PUBLISHABLE_KEY) }; }
   @Get('workspaces') async workspaces(@Headers('authorization') auth?: string) {
     const client = await this.db.client(auth);
@@ -50,13 +56,14 @@ class CrmController {
   }
   @Get('workspaces/:workspace/state') async state(@Param('workspace') workspace: string, @Headers('authorization') auth?: string) {
     uuid(workspace); const client = await this.db.client(auth);
-    const membership = await client.from('workspaces').select('id').eq('id', workspace).maybeSingle();
-    this.db.check(membership.error); if (!membership.data) throw new HttpException('Workspace not found', 404);
+    await requireWorkspace(client, this.db, workspace);
+    // Compatibility for browser tabs opened before the paged client release.
+    // The current client uses /snapshot and /records/:kind instead.
     const tables = ['contacts', 'deals', 'tasks', 'conversations', 'messages', 'channel_connections', 'pipeline_stages'] as const;
     const results = await Promise.all(tables.map(table => client.from(table).select('*').eq('workspace_id', workspace).order('created_at', {ascending: false}).limit(1000)));
     results.forEach(result => this.db.check(result.error));
-    const members=await client.rpc('list_members',{target:workspace}); this.db.check(members.error);
-    return {...Object.fromEntries(tables.map((table, i) => [table, results[i].data])),members:members.data};
+    const members = await client.rpc('list_members', {target: workspace}); this.db.check(members.error);
+    return {...Object.fromEntries(tables.map((table, index) => [table, results[index].data])), members: members.data};
   }
   @Post('workspaces/:workspace/:table') async create(@Param('workspace') workspace: string, @Param('table') table: string, @Body() body: unknown, @Headers('authorization') auth?: string) {
     const clean = payload(table, body); const client = await this.db.client(auth);
@@ -68,17 +75,25 @@ class CrmController {
     if (!data) throw new HttpException('Record not found', 404); return data;
   }
   @Delete('workspaces/:workspace/:table/:id') async remove(@Param('workspace') workspace: string, @Param('table') table: string, @Param('id') id: string, @Headers('authorization') auth?: string) {
-    if (!Object.hasOwn(fields,table)) throw new BadRequestException('Unknown resource'); const client = await this.db.client(auth);
+    if (!Object.hasOwn(fields,table)) throw new BadRequestException('Unknown resource');
+    const {client, user} = await this.db.authenticated(auth);
+    if (table === 'contacts') {
+      const membership = await client.from('workspace_members').select('role').eq('workspace_id', uuid(workspace)).eq('user_id', user.id).maybeSingle();
+      this.db.check(membership.error);
+      if (!membership.data) throw new HttpException('Contact not found', 404);
+      if (!['owner', 'member'].includes(membership.data.role)) throw new HttpException('You do not have permission to delete contacts.', 403);
+      if (this.attachments.configured && (await this.attachments.list(workspace, id)).length) throw new HttpException('Remove the attachments before deleting this contact.', 409);
+    }
     const { data, error } = await client.from(table).delete().eq('workspace_id', uuid(workspace)).eq('id', uuid(id)).select('id'); this.db.check(error);
     if (!data?.length) throw new HttpException('Record not found', 404); return { deleted: true };
   }
 }
-@Module({ controllers: [CrmController, WorkflowsController, BusinessController, RegistrationController], providers: [Database] })
+@Module({ controllers: [CrmController, WorkflowsController, BusinessController, RegistrationController, RecordsController, AttachmentsController, WhatsAppController, WhatsAppWebhookController], providers: [Database, AttachmentStore, AttachmentAccess, AttachmentUploadLimit, WhatsAppStore, WhatsAppProvider] })
 class AppModule {}
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule,{rawBody:true});
   app.useBodyParser('json', {limit: '1mb'});
   app.enableCors({ origin: process.env.WEB_ORIGIN || 'http://127.0.0.1:3100', methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] });
-  await app.listen(Number(process.env.PORT || 4100), '127.0.0.1');
+  await app.listen(Number(process.env.PORT || 4100), process.env.HOST || '127.0.0.1');
 }
 void bootstrap();

@@ -1,5 +1,6 @@
 import {BadRequestException,Body,Controller,Delete,Get,Headers,HttpException,Param,Patch,Post,Query} from '@nestjs/common';
 import {Database} from './database';
+import {linkedContacts, requireContact} from './records';
 
 const resources:Record<string,{table:string;fields:string[]}>={
   automations:{table:'automation_rules',fields:['name','event','stage','task_title','due_days','assigned_to','enabled']},
@@ -44,9 +45,13 @@ export class BusinessController {
   @Get('business/:workspace/runs') async runs(@Param('workspace') workspace:string,@Headers('authorization') auth?:string){
     const client=await this.db.client(auth);const {data,error}=await client.from('automation_runs').select('id,rule_name,created_at,task_id').eq('workspace_id',uuid(workspace)).order('created_at',{ascending:false}).limit(50);this.db.check(error);return data;
   }
-  @Get('business/:workspace/:resource') async list(@Param('workspace') workspace:string,@Param('resource') kind:string,@Query('page') page='0',@Headers('authorization') auth?:string){
+  @Get('business/:workspace/:resource') async list(@Param('workspace') workspace:string,@Param('resource') kind:string,@Query('page') page='0',@Headers('authorization') auth?:string,@Query('contact') contact?:string){
     const config=resource(kind);const n=Number(page);if(!Number.isInteger(n)||n<0||n>100000)throw new BadRequestException('Invalid page');
-    const client=await this.db.client(auth);const {data,error,count}=await client.from(config.table).select('*',{count:'exact'}).eq('workspace_id',uuid(workspace)).order('created_at',{ascending:false}).order('id').range(n*50,n*50+49);this.db.check(error);return {rows:data,total:count,page:n};
+    const client=await this.db.client(auth);
+    if(contact!==undefined){if(typeof contact!=='string'||kind==='automations')throw new BadRequestException('Invalid customer filter');await requireContact(client,this.db,workspace,uuid(contact));}
+    let query=client.from(config.table).select('*',{count:'exact'}).eq('workspace_id',uuid(workspace));
+    if(contact)query=query.eq('contact_id',contact);
+    const {data,error,count}=await query.order('created_at',{ascending:false}).order('id').range(n*50,n*50+49);this.db.check(error);const contacts=await linkedContacts(client,this.db,workspace,(data||[]).map(row=>row.contact_id));return {rows:(data||[]).map(row=>({...row,contact:contacts[row.contact_id]||null})),total:count,page:n};
   }
   @Post('business/:workspace/:resource') async create(@Param('workspace') workspace:string,@Param('resource') kind:string,@Body() body:unknown,@Headers('authorization') auth?:string){
     const clean=payload(kind,body);const client=await this.db.client(auth);const {data,error}=await client.from(resource(kind).table).insert({...clean,workspace_id:uuid(workspace)}).select().single();this.db.check(error);return data;
